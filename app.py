@@ -5,9 +5,10 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import os
 from statsbombpy import sb
-from mplsoccer import Pitch, VerticalPitch, Sbopen
+from mplsoccer import Pitch, VerticalPitch
 from matplotlib.colors import LinearSegmentedColormap
 import matplotlib.patheffects as path_effects
+import gc
 
 # --- Page Configuration ---
 st.set_page_config(
@@ -57,12 +58,31 @@ TOUCH_TYPES = ["Pass", "Ball Receipt*", "Carry", "Clearance", "Foul Won", "Block
 
 @st.cache_data
 def load_data():
-    if os.path.exists(MATCHES_FILE) and os.path.exists(EVENTS_FILE):
-        m = pd.read_csv(MATCHES_FILE)
-        e = pd.read_csv(EVENTS_FILE, low_memory=False)
-        return m, e
-    st.error("Data files missing. Run 'data_extractor.py' first.")
-    st.stop()
+    if not (os.path.exists(MATCHES_FILE) and os.path.exists(EVENTS_FILE)):
+        st.error("Données manquantes. Exécutez 'data_extractor.py'.")
+        st.stop()
+    
+    m = pd.read_csv(MATCHES_FILE)
+    
+    # Essential columns for the dashboard
+    use_cols = [
+        'match_id', 'team', 'player', 'type', 'x', 'y', 
+        'pass_end_x', 'pass_end_y', 'carry_end_x', 'carry_end_y', 
+        'pass_outcome', 'minute', 'pass_recipient'
+    ]
+    
+    # Load with categorical types to save memory
+    e = pd.read_csv(
+        EVENTS_FILE, 
+        usecols=use_cols,
+        dtype={
+            'team': 'category',
+            'type': 'category',
+            'pass_outcome': 'category'
+        },
+        low_memory=False
+    )
+    return m, e
 
 matches_all, events_all = load_data()
 
@@ -237,43 +257,52 @@ with tab_n:
                             format_func=lambda x: team_m[team_m.match_id == x].apply(lambda r: f"{r.home_team} vs {r.away_team}", axis=1).values[0])
     
     with st.spinner("Décodage de la géométrie tactile..."):
-        parser = Sbopen()
-        df, _, _, _ = parser.event(net_m_id)
-        df_t = df[df['team_name'] == sel_team]
+        # Use local filtered data instead of Sbopen
+        df_t = events_all[(events_all.match_id == net_m_id) & (events_all.team == sel_team)].copy()
         
-        pass_df = df_t[df_t['type_name'] == 'Pass'].copy()
-        pass_df['outcome_name'] = pass_df['outcome_name'].fillna('Successful')
+        pass_df = df_t[df_t['type'] == 'Pass'].copy()
+        pass_df['pass_outcome'] = pass_df['pass_outcome'].fillna('Successful')
         
         st.subheader("Distribution des Passes")
         fig, ax = plt.subplots(figsize=(10, 4))
-        pass_df['outcome_name'].value_counts().plot(kind='barh', color='#f85149', ax=ax)
+        pass_df['pass_outcome'].value_counts().plot(kind='barh', color='#f85149', ax=ax)
         style_plt(fig, ax)
         st.pyplot(fig)
         
-        suc_p = pass_df[pass_df['outcome_name'] == 'Successful']
-        first_s = df_t[df_t['type_name'] == 'Substitution']['minute'].min()
+        suc_p = pass_df[pass_df['pass_outcome'] == 'Successful']
+        # Use local column names
+        first_s = df_t[df_t['type'] == 'Substitution']['minute'].min()
         if pd.isna(first_s): first_s = 90
         
+        # Network filtering
         nw = suc_p[suc_p['minute'] < first_s]
-        avg = nw.groupby('player_name').agg(x=('x', 'mean'), y=('y', 'mean'), count=('id', 'size')).reset_index()
-        btn = nw.groupby(['player_name', 'pass_recipient_name']).size().reset_index(name='cnt')
-        btn = btn.merge(avg, left_on='player_name', right_on='player_name')
-        btn = btn.merge(avg, left_on='pass_recipient_name', right_on='player_name', suffixes=['', '_end'])
+        avg = nw.groupby('player').agg(x=('x', 'mean'), y=('y', 'mean'), count=('match_id', 'size')).reset_index()
         
-        st.subheader(f"Réseau Tactique (Avant 1er changement : {int(first_s)}')")
-        # Full pitch markings for network
-        np_pitch = Pitch(pitch_type='custom', pitch_length=120, pitch_width=80, pitch_color='#0d1117', line_color='#8b949e', linewidth=2, line_zorder=2)
-        fig, ax = np_pitch.draw(figsize=(12, 8))
+        # For the connections, we need the pass recipients. 
+        # Note: If 'pass_recipient' wasn't in our use_cols, we should add it if we want the full network.
+        # But for now, let's at least optimize what we have.
+        # Actually, let's add 'pass_recipient' to use_cols in load_data to keep the network working.
         
-        np_pitch.lines(1.2 * btn.x, 0.8 * btn.y, 1.2 * btn.x_end, 0.8 * btn.y_end,
-                      lw=btn['cnt'] * 0.5, color='#f85149', ax=ax, alpha=0.5, zorder=1)
-        np_pitch.scatter(1.2 * avg.x, 0.8 * avg.y, s=30 * avg['count'], color='#161b22', edgecolors='#f85149', linewidth=2, ax=ax, zorder=2)
-        
-        for i, row in avg.iterrows():
-            ax.annotate(row.player_name.split()[-1], xy=(1.2 * row.x, 0.8 * row.y), c='white', weight='bold', size=10, ha='center', va='center')
-        
-        add_direction_arrow(ax, 'horizontal')
-        st.pyplot(fig)
+        if 'pass_recipient' in df_t.columns:
+            btn = nw.groupby(['player', 'pass_recipient']).size().reset_index(name='cnt')
+            btn = btn.merge(avg, left_on='player', right_on='player')
+            btn = btn.merge(avg, left_on='pass_recipient', right_on='player', suffixes=['', '_end'])
+            
+            st.subheader(f"Réseau Tactique (Avant 1er changement : {int(first_s)}')")
+            np_pitch = Pitch(pitch_type='statsbomb', pitch_color='#0d1117', line_color='#8b949e', linewidth=2, line_zorder=2)
+            fig, ax = np_pitch.draw(figsize=(12, 8))
+            
+            np_pitch.lines(btn.x, btn.y, btn.x_end, btn.y_end,
+                          lw=btn['cnt'] * 0.5, color='#f85149', ax=ax, alpha=0.5, zorder=1)
+            np_pitch.scatter(avg.x, avg.y, s=30 * avg['count'], color='#161b22', edgecolors='#f85149', linewidth=2, ax=ax, zorder=2)
+            
+            for i, row in avg.iterrows():
+                ax.annotate(str(row.player).split()[-1], xy=(row.x, row.y), c='white', weight='bold', size=10, ha='center', va='center')
+            
+            add_direction_arrow(ax, 'horizontal')
+            st.pyplot(fig)
+        else:
+            st.info("Le réseau tactique nécessite la colonne 'pass_recipient'. Optimisation en cours...")
 
 st.sidebar.markdown("---")
 st.sidebar.caption("Source : StatsBomb Data")
