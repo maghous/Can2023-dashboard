@@ -64,24 +64,26 @@ def load_data():
     
     m = pd.read_csv(MATCHES_FILE)
     
-    # Essential columns for the dashboard
     use_cols = [
         'match_id', 'team', 'player', 'type', 'x', 'y', 
         'pass_end_x', 'pass_end_y', 'carry_end_x', 'carry_end_y', 
         'pass_outcome', 'minute', 'pass_recipient'
     ]
     
-    # Load with categorical types to save memory
-    e = pd.read_csv(
-        EVENTS_FILE, 
-        usecols=use_cols,
-        dtype={
-            'team': 'category',
-            'type': 'category',
-            'pass_outcome': 'category'
-        },
-        low_memory=False
-    )
+    # Load and optimize types
+    e = pd.read_csv(EVENTS_FILE, usecols=use_cols, low_memory=False)
+    
+    # Handle categories properly to avoid TypeError in fillna
+    e['team'] = e['team'].astype('category')
+    e['type'] = e['type'].astype('category')
+    e['pass_outcome'] = e['pass_outcome'].fillna('Successful').astype('category')
+    
+    # Downcast floats to save 50% memory on these columns
+    float_cols = ['x', 'y', 'pass_end_x', 'pass_end_y', 'carry_end_x', 'carry_end_y', 'minute']
+    for col in float_cols:
+        if col in e.columns:
+            e[col] = pd.to_numeric(e[col], downcast='float')
+            
     return m, e
 
 matches_all, events_all = load_data()
@@ -261,7 +263,7 @@ with tab_n:
         df_t = events_all[(events_all.match_id == net_m_id) & (events_all.team == sel_team)].copy()
         
         pass_df = df_t[df_t['type'] == 'Pass'].copy()
-        pass_df['pass_outcome'] = pass_df['pass_outcome'].fillna('Successful')
+        # pass_outcome is already filled and categorical from load_data
         
         st.subheader("Distribution des Passes")
         fig, ax = plt.subplots(figsize=(10, 4))
