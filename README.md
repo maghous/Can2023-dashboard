@@ -39,5 +39,5 @@ An interactive Streamlit dashboard for analyzing performance data from the **202
 ## 📊 Data Source
 All data is powered by **StatsBomb Open Data**.
 
-## 👤 Author
-[Your Name/Portfolio]
+## 👤 App
+https://can2023-dashboard.streamlit.app
