@@ -138,7 +138,7 @@ st.markdown(f"<h1>{sel_team.upper()} : DASHBOARD ANALYTIQUE</h1>", unsafe_allow_
 # Top Bar Metrics
 m1, m2, m3, m4 = st.columns(4)
 total_passes = len(t_events[t_events.type == "Pass"])
-success_rate = (len(t_events[(t_events.type == "Pass") & (t_events.pass_outcome.isna())]) / total_passes * 100) if total_passes > 0 else 0
+success_rate = (len(t_events[(t_events.type == "Pass") & (t_events.pass_outcome == "Successful")]) / total_passes * 100) if total_passes > 0 else 0
 total_shoots = len(t_events[t_events.type == "Shot"])
 high_intensity = len(t_events[t_events.type.isin(["Dribble", "Interception", "Ball Recovery"])])
 
@@ -154,7 +154,7 @@ with tab_t:
     st.subheader("Progression Collective (Dernier Tiers)")
     c1, c2 = st.columns(2)
     
-    f3_p = t_events[(t_events.type == "Pass") & (t_events.x < 80) & (t_events.pass_end_x > 80) & (t_events.pass_outcome.isna())]
+    f3_p = t_events[(t_events.type == "Pass") & (t_events.x < 80) & (t_events.pass_end_x > 80) & (t_events.pass_outcome == "Successful")]
     f3_c = t_events[(t_events.type == "Carry") & (t_events.x < 80) & (t_events.carry_end_x > 80)]
     p_df = pd.merge(f3_p.groupby("player").size().reset_index(name="P"), f3_c.groupby("player").size().reset_index(name="C"), on="player", how="outer").fillna(0)
     p_df["Total"] = p_df["P"] + p_df["C"]
@@ -223,7 +223,7 @@ with tab_p:
     
     with ca:
         st.write("**Passes Réussies**")
-        suc = pl_p[pl_p.pass_outcome.isna()]
+        suc = pl_p[pl_p.pass_outcome == "Successful"]
         fig, ax = hp.draw(figsize=(10, 7))
         if not suc.empty:
             hp.arrows(suc.x, suc.y, suc.pass_end_x, suc.pass_end_y, color='#2ea043', ax=ax, width=1.5, headwidth=4, alpha=0.8)
