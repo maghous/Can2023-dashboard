@@ -163,7 +163,7 @@ with tab_t:
     with c1:
         st.write("**Entrées Totales (Passes + Carries)**")
         fig, ax = plt.subplots(figsize=(10, 7))
-        sns.barplot(x="Total", y="player", data=p_df, palette="Reds_d", ax=ax)
+        sns.barplot(x="Total", y="player", data=p_df, palette="Reds_d", ax=ax, hue="player", legend=False)
         style_plt(fig, ax)
         st.pyplot(fig)
     
@@ -183,7 +183,7 @@ with tab_t:
         st.write("**Passes vers le Dernier Tiers**")
         p_df_p = p_df.sort_values(by="P", ascending=False)
         fig, ax = plt.subplots(figsize=(10, 7))
-        sns.barplot(x="P", y="player", data=p_df_p, palette="Blues_d", ax=ax)
+        sns.barplot(x="P", y="player", data=p_df_p, palette="Blues_d", ax=ax, hue="player", legend=False)
         style_plt(fig, ax)
         st.pyplot(fig)
         
@@ -191,7 +191,7 @@ with tab_t:
         st.write("**Carries vers le Dernier Tiers**")
         p_df_c = p_df.sort_values(by="C", ascending=False)
         fig, ax = plt.subplots(figsize=(10, 7))
-        sns.barplot(x="C", y="player", data=p_df_c, palette="Greens_d", ax=ax)
+        sns.barplot(x="C", y="player", data=p_df_c, palette="Greens_d", ax=ax, hue="player", legend=False)
         style_plt(fig, ax)
         st.pyplot(fig)
 
